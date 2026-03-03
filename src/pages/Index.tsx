@@ -1,5 +1,8 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import Icon from "@/components/ui/icon";
+
+const API_CHATS = "https://functions.poehali.dev/fadd8de8-e79e-4ce0-9120-f7cfb749035a";
+const API_MESSAGES = "https://functions.poehali.dev/2d04ade2-97e2-4fd7-8582-2cc9efd15031";
 
 type Section = "chats" | "contacts" | "bots" | "profile" | "settings" | "archive";
 type Theme = "light" | "dark";
@@ -104,11 +107,13 @@ function formatFileSize(bytes: number): string {
 export default function Index() {
   const [theme, setTheme] = useState<Theme>("light");
   const [section, setSection] = useState<Section>("chats");
-  const [chats, setChats] = useState<Chat[]>(INITIAL_CHATS);
+  const [chats, setChats] = useState<Chat[]>([]);
+  const [chatsLoading, setChatsLoading] = useState(true);
   const [activeChat, setActiveChat] = useState<Chat | null>(null);
   const [inputText, setInputText] = useState("");
   const [search, setSearch] = useState("");
-  const [messages, setMessages] = useState<Record<number, Message[]>>(INITIAL_MESSAGES);
+  const [messages, setMessages] = useState<Record<number, Message[]>>({});
+  const [msgsLoading, setMsgsLoading] = useState(false);
   const [callModal, setCallModal] = useState<{ name: string; type: "voice" | "video" } | null>(null);
   const [showAttachMenu, setShowAttachMenu] = useState(false);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
@@ -122,9 +127,39 @@ export default function Index() {
 
   const EMOJIS = ["😀","😂","❤️","👍","🔥","✨","🙏","😍","🎉","😎","👏","💪","🤔","😅","🥳","💯","🚀","💬","📎","🌟"];
 
+  // Загрузка чатов из БД
+  const loadChats = useCallback(async () => {
+    try {
+      const res = await fetch(API_CHATS);
+      const data = await res.json();
+      setChats(data.chats || []);
+    } catch {
+      setChats(INITIAL_CHATS);
+    } finally {
+      setChatsLoading(false);
+    }
+  }, []);
+
+  // Загрузка истории сообщений
+  const loadMessages = useCallback(async (chatId: number) => {
+    if (messages[chatId]) return;
+    setMsgsLoading(true);
+    try {
+      const res = await fetch(`${API_MESSAGES}?chat_id=${chatId}`);
+      const data = await res.json();
+      setMessages(prev => ({ ...prev, [chatId]: data.messages || [] }));
+    } catch {
+      setMessages(prev => ({ ...prev, [chatId]: [] }));
+    } finally {
+      setMsgsLoading(false);
+    }
+  }, [messages]);
+
+  useEffect(() => { loadChats(); }, []);
+
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, activeChat]);
+  }, [messages, activeChat, isTyping]);
 
   const toggleTheme = () => {
     const next = theme === "light" ? "dark" : "light";
@@ -136,6 +171,7 @@ export default function Index() {
     setActiveChat(chat);
     setSection("chats");
     setChats(prev => prev.map(c => c.id === chat.id ? { ...c, unread: 0 } : c));
+    loadMessages(chat.id);
   };
 
   const openContactChat = (chatId: number) => {
@@ -148,29 +184,30 @@ export default function Index() {
     c.lastMessage.toLowerCase().includes(search.toLowerCase())
   );
 
-  const sendMessage = (text?: string) => {
+  const sendMessage = async (text?: string) => {
     const content = text || inputText.trim();
     if (!content || !activeChat) return;
     const chatId = activeChat.id;
     const now = new Date().toLocaleTimeString("ru", { hour: "2-digit", minute: "2-digit" });
-    const newMsg: Message = { id: Date.now(), text: content, time: now, isOwn: true, status: "sent" };
-    setMessages(prev => ({ ...prev, [chatId]: [...(prev[chatId] || []), newMsg] }));
+    // Оптимистичное добавление
+    const tempMsg: Message = { id: Date.now(), text: content, time: now, isOwn: true, status: "sent" };
+    setMessages(prev => ({ ...prev, [chatId]: [...(prev[chatId] || []), tempMsg] }));
     setChats(prev => prev.map(c => c.id === chatId ? { ...c, lastMessage: content, time: now } : c));
     if (!text) setInputText("");
 
-    // Simulate reply after 1.5s
-    setIsTyping(true);
-    setTimeout(() => {
-      setIsTyping(false);
-      const replies = ["Понял, спасибо!", "Окей 👍", "Интересно!", "Хорошо, договорились", "Буду иметь в виду"];
-      const reply: Message = {
-        id: Date.now() + 1,
-        text: replies[Math.floor(Math.random() * replies.length)],
-        time: new Date().toLocaleTimeString("ru", { hour: "2-digit", minute: "2-digit" }),
-        isOwn: false,
-      };
-      setMessages(prev => ({ ...prev, [chatId]: [...(prev[chatId] || []), reply] }));
-    }, 1500);
+    try {
+      const res = await fetch(API_MESSAGES, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ chat_id: chatId, text: content }),
+      });
+      const saved = await res.json();
+      // Обновляем ID сохранённого сообщения
+      setMessages(prev => ({
+        ...prev,
+        [chatId]: prev[chatId].map(m => m.id === tempMsg.id ? { ...m, id: saved.id } : m),
+      }));
+    } catch { /* оставляем temp сообщение */ }
   };
 
   const handleTyping = (val: string) => {
@@ -179,24 +216,27 @@ export default function Index() {
     typingTimerRef.current = setTimeout(() => {}, 1000);
   };
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>, type: "image" | "video" | "doc") => {
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>, type: "image" | "video" | "doc") => {
     const file = e.target.files?.[0];
     if (!file || !activeChat) return;
     const url = URL.createObjectURL(file);
     const now = new Date().toLocaleTimeString("ru", { hour: "2-digit", minute: "2-digit" });
-    const newMsg: Message = {
-      id: Date.now(),
-      time: now,
-      isOwn: true,
-      status: "sent",
-      file: { name: file.name, size: formatFileSize(file.size), type, url },
-    };
+    const fileData = { name: file.name, size: formatFileSize(file.size), type, url };
     const chatId = activeChat.id;
-    setMessages(prev => ({ ...prev, [chatId]: [...(prev[chatId] || []), newMsg] }));
+    const tempMsg: Message = { id: Date.now(), time: now, isOwn: true, status: "sent", file: fileData };
+    setMessages(prev => ({ ...prev, [chatId]: [...(prev[chatId] || []), tempMsg] }));
     const label = type === "image" ? "📷 Фото" : type === "video" ? "🎥 Видео" : `📎 ${file.name}`;
     setChats(prev => prev.map(c => c.id === chatId ? { ...c, lastMessage: label, time: now } : c));
     setShowAttachMenu(false);
     e.target.value = "";
+
+    try {
+      await fetch(API_MESSAGES, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ chat_id: chatId, file: fileData }),
+      });
+    } catch { /* оставляем локальное сообщение */ }
   };
 
   const s = {
@@ -283,20 +323,36 @@ export default function Index() {
         </div>
       </div>
       <div style={{ flex: 1, overflowY: "auto" }}>
-        {pinnedChats.length > 0 && (
+        {chatsLoading ? (
+          <div style={{ padding: 24, display: "flex", flexDirection: "column", gap: 12 }}>
+            {[1,2,3,4,5].map(i => (
+              <div key={i} style={{ display: "flex", gap: 12, alignItems: "center", padding: "0 4px" }}>
+                <div style={{ width: 42, height: 42, borderRadius: "50%", background: "var(--nc-border)", flexShrink: 0, animation: "pulse-dot 1.5s infinite", animationDelay: `${i*0.1}s` }} />
+                <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 6 }}>
+                  <div style={{ height: 13, background: "var(--nc-border)", borderRadius: 6, width: "60%", animation: "pulse-dot 1.5s infinite" }} />
+                  <div style={{ height: 11, background: "var(--nc-border)", borderRadius: 6, width: "80%", animation: "pulse-dot 1.5s infinite", animationDelay: "0.2s" }} />
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
           <>
-            <div style={{ padding: "8px 16px 4px", fontSize: 11, fontWeight: 600, color: "var(--nc-text-secondary)", textTransform: "uppercase", letterSpacing: "0.08em" }}>Закреплённые</div>
-            {pinnedChats.map(chat => <ChatRow key={chat.id} chat={chat} />)}
+            {pinnedChats.length > 0 && (
+              <>
+                <div style={{ padding: "8px 16px 4px", fontSize: 11, fontWeight: 600, color: "var(--nc-text-secondary)", textTransform: "uppercase", letterSpacing: "0.08em" }}>Закреплённые</div>
+                {pinnedChats.map(chat => <ChatRow key={chat.id} chat={chat} />)}
+              </>
+            )}
+            {regularChats.length > 0 && (
+              <>
+                {pinnedChats.length > 0 && <div style={{ padding: "8px 16px 4px", fontSize: 11, fontWeight: 600, color: "var(--nc-text-secondary)", textTransform: "uppercase", letterSpacing: "0.08em" }}>Все чаты</div>}
+                {regularChats.map(chat => <ChatRow key={chat.id} chat={chat} />)}
+              </>
+            )}
+            {filteredChats.length === 0 && !chatsLoading && (
+              <div style={{ padding: 24, textAlign: "center", color: "var(--nc-text-secondary)", fontSize: 14 }}>Ничего не найдено</div>
+            )}
           </>
-        )}
-        {regularChats.length > 0 && (
-          <>
-            {pinnedChats.length > 0 && <div style={{ padding: "8px 16px 4px", fontSize: 11, fontWeight: 600, color: "var(--nc-text-secondary)", textTransform: "uppercase", letterSpacing: "0.08em" }}>Все чаты</div>}
-            {regularChats.map(chat => <ChatRow key={chat.id} chat={chat} />)}
-          </>
-        )}
-        {filteredChats.length === 0 && (
-          <div style={{ padding: 24, textAlign: "center", color: "var(--nc-text-secondary)", fontSize: 14 }}>Ничего не найдено</div>
         )}
       </div>
     </div>
@@ -355,6 +411,15 @@ export default function Index() {
 
         {/* Messages */}
         <div style={s.chatMessages}>
+          {msgsLoading && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 10, paddingBottom: 8 }}>
+              {[1,2,3].map(i => (
+                <div key={i} style={{ display: "flex", justifyContent: i % 2 === 0 ? "flex-end" : "flex-start" }}>
+                  <div style={{ height: 40, width: `${[45,60,35][i-1]}%`, borderRadius: 14, background: "var(--nc-border)", animation: "pulse-dot 1.5s infinite", animationDelay: `${i*0.15}s` }} />
+                </div>
+              ))}
+            </div>
+          )}
           {chatMsgs.map((msg, i) => (
             <div key={msg.id} style={{ ...s.bubbleWrap(msg.isOwn), animationDelay: `${i * 0.02}s` }} className="animate-fade-in">
               <div style={{ maxWidth: "62%" }}>
