@@ -104,7 +104,15 @@ function formatFileSize(bytes: number): string {
   return (bytes / (1024 * 1024)).toFixed(1) + " МБ";
 }
 
-export default function Index() {
+interface CurrentUser { id: number; name: string; username: string; avatar: string; status?: string; }
+
+interface IndexProps {
+  currentUser: CurrentUser;
+  token: string;
+  onLogout: () => void;
+}
+
+export default function Index({ currentUser, token, onLogout }: IndexProps) {
   const [theme, setTheme] = useState<Theme>("light");
   const [section, setSection] = useState<Section>("chats");
   const [chats, setChats] = useState<Chat[]>([]);
@@ -648,14 +656,14 @@ export default function Index() {
           <div style={s.sectionTitle}>Профиль</div>
           <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 16, paddingTop: 20, paddingBottom: 32 }}>
             <div style={{ position: "relative" }}>
-              <AvatarComp initials="ВИ" size={88} />
+              <AvatarComp initials={currentUser.avatar} size={88} />
               <button style={{ position: "absolute", bottom: 0, right: 0, width: 28, height: 28, borderRadius: "50%", background: "var(--nc-blue)", border: "2px solid var(--nc-panel)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
                 <Icon name="Camera" size={13} style={{ color: "#fff" }} />
               </button>
             </div>
             <div style={{ textAlign: "center" }}>
-              <div style={{ fontSize: 22, fontWeight: 700, color: "var(--nc-text-primary)" }}>Владимир Иванов</div>
-              <div style={{ fontSize: 14, color: "var(--nc-text-secondary)", marginTop: 4 }}>@vladimir_iv</div>
+              <div style={{ fontSize: 22, fontWeight: 700, color: "var(--nc-text-primary)" }}>{currentUser.name}</div>
+              <div style={{ fontSize: 14, color: "var(--nc-text-secondary)", marginTop: 4 }}>@{currentUser.username}</div>
             </div>
             <div style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "rgba(34,197,94,0.1)", color: "#16a34a", borderRadius: 20, padding: "5px 14px", fontSize: 13, fontWeight: 600 }}>
               <div style={{ width: 7, height: 7, borderRadius: "50%", background: "#22C55E" }} />
@@ -663,10 +671,8 @@ export default function Index() {
             </div>
           </div>
           {[
-            { icon: "Phone", label: "Телефон", value: "+7 (999) 123-45-67" },
-            { icon: "Mail", label: "Email", value: "v.ivanov@email.com" },
-            { icon: "Info", label: "О себе", value: "Разрабатываю NextChat 🚀" },
-            { icon: "MapPin", label: "Город", value: "Москва, Россия" },
+            { icon: "User", label: "Имя пользователя", value: `@${currentUser.username}` },
+            { icon: "Info", label: "О себе", value: currentUser.status || "Использую NextChat 🚀" },
           ].map(row => (
             <div key={row.label} style={s.card}
               onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = "var(--nc-blue)"; }}
@@ -682,6 +688,17 @@ export default function Index() {
               <Icon name="ChevronRight" size={16} style={{ color: "var(--nc-text-secondary)" }} />
             </div>
           ))}
+          <div style={{ marginTop: 16 }}>
+            <button
+              style={{ width: "100%", padding: "12px 0", background: "rgba(239,68,68,0.08)", color: "#DC2626", border: "1px solid rgba(239,68,68,0.2)", borderRadius: 12, fontSize: 14, fontWeight: 600, cursor: "pointer", fontFamily: "'Golos Text', sans-serif", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, transition: "all 0.15s" }}
+              onClick={onLogout}
+              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = "rgba(239,68,68,0.15)"; }}
+              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = "rgba(239,68,68,0.08)"; }}
+            >
+              <Icon name="LogOut" size={16} style={{ color: "#DC2626" }} />
+              Выйти из аккаунта
+            </button>
+          </div>
         </div>
       );
     }
@@ -807,6 +824,13 @@ export default function Index() {
           onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
         >
           <Icon name={isDark ? "Sun" : "Moon"} size={20} />
+        </button>
+        <button
+          style={{ width: 36, height: 36, borderRadius: "50%", background: "var(--nc-blue)", border: "2px solid var(--nc-border)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", fontSize: 13, fontWeight: 700, color: "#fff", marginTop: 4, flexShrink: 0 }}
+          title={currentUser.name}
+          onClick={() => { setSection("profile"); setActiveChat(null); }}
+        >
+          {currentUser.avatar}
         </button>
       </nav>
 

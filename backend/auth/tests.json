@@ -1,0 +1,20 @@
+{
+  "tests": [
+    {
+      "name": "Register new user",
+      "method": "POST",
+      "path": "/?action=register",
+      "body": {"name": "Тест Пользователь", "username": "testuser_nc", "password": "test123"},
+      "expectedStatus": 201,
+      "bodyMatcher": "none"
+    },
+    {
+      "name": "Login user",
+      "method": "POST",
+      "path": "/?action=login",
+      "body": {"username": "testuser_nc", "password": "test123"},
+      "expectedStatus": 200,
+      "bodyMatcher": "none"
+    }
+  ]
+}
