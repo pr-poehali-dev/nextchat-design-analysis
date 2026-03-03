@@ -564,8 +564,8 @@ export default function Index() {
       if (!activeChat) {
         return (
           <div style={s.empty} className="animate-fade-in">
-            <div style={{ width: 72, height: 72, borderRadius: 22, background: "var(--nc-blue-light)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-              <Icon name="MessageCircle" size={36} style={{ color: "var(--nc-blue)" }} />
+            <div style={{ width: 72, height: 72, borderRadius: 22, overflow: "hidden", boxShadow: "0 8px 32px rgba(42,93,255,0.25)" }}>
+              <img src="https://cdn.poehali.dev/projects/8ad0a852-8f58-44b9-91c1-f968494c353f/bucket/d90bdd7d-71bf-4c1c-9091-f09679b3dc28.jpg" alt="NextChat" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
             </div>
             <div style={{ fontSize: 20, fontWeight: 700, color: "var(--nc-text-primary)" }}>Выберите чат</div>
             <div style={{ fontSize: 14, maxWidth: 240, textAlign: "center", lineHeight: 1.7, color: "var(--nc-text-secondary)" }}>
@@ -669,7 +669,11 @@ export default function Index() {
       {/* Left nav */}
       <nav style={s.nav}>
         <div style={s.navLogo}>
-          <span style={{ color: "#fff", fontWeight: 800, fontSize: 15, letterSpacing: "-0.5px" }}>N</span>
+          <img
+            src="https://cdn.poehali.dev/projects/8ad0a852-8f58-44b9-91c1-f968494c353f/bucket/d90bdd7d-71bf-4c1c-9091-f09679b3dc28.jpg"
+            alt="NextChat"
+            style={{ width: 36, height: 36, borderRadius: 10, objectFit: "cover", display: "block" }}
+          />
         </div>
         {NAV_ITEMS.map(item => (
           <button
